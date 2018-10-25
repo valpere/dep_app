@@ -16,6 +16,8 @@ use Ref::Util qw(
     is_hashref
 );
 use IO::File ();
+use List::MoreUtils qw(uniq);
+use Clone qw(clone);
 
 # search for libs in module's directory
 use FindBin qw($Bin);
@@ -25,6 +27,25 @@ use Wono::Utils qw(
     :json
 );
 use Wono::Driver::Tomcat8;
+use Wono::Logger qw(
+    init_logger
+    logger
+    debugd
+    info
+    infof
+    fatalf
+);
+
+#*****************************************************************************
+const my $_KNOWN_ACTIONS => {
+    deploy        => 1,
+    undeploy      => 1,
+    start         => 1,
+    available     => 1,
+    existing      => 1,
+    save_config   => 1,
+    delete_config => 1,
+};
 
 #*****************************************************************************
 has 'driver' => (
@@ -45,7 +66,14 @@ has 'json' => (
 sub initialize {
     my ( $self, $preps, $opts ) = @_;
 
-    # $self->SUPER::initialize( $preps, $opts );
+    $self->SUPER::initialize( $preps, $opts );
+
+    my $actions = [ uniq @{ $self->params->{action} || [] } ];
+    if ( @{$actions} < 1 ) {
+        fatalf( 'Please specify one of the actions: %s', join( ', ', sort keys %{$_KNOWN_ACTIONS} ) );
+    }
+
+    $self->params->{action} = $actions;
 
     return undef;
 }
@@ -54,7 +82,7 @@ sub initialize {
 sub finalize {
     my ( $self, $msg ) = @_;
 
-    # $self->SUPER::finalize($msg);
+    $self->SUPER::finalize($msg);
 
     return undef;
 }
@@ -77,7 +105,90 @@ sub process_done {
 sub process_iteration {
     my ($self) = @_;
 
-    return 0;
+    my $action = shift( @{ $self->params->{action} } );
+    if ( !exists( $_KNOWN_ACTIONS->{$action} ) ) {
+        fatalf( 'Unknown action: %s', $action );
+    }
+
+    my $handler = sprintf( 'action_%s', $action );
+    if ( !$self->can($handler) ) {
+        fatalf( q{Cannot handle action '%s'}, $action );
+    }
+
+    infof( 'Iteration begin: %s', $action );
+    $self->$handler();
+    infof( 'Iteration end: %s', $action );
+
+    return scalar( @{ $self->params->{action} } );
+}
+
+#*****************************************************************************
+sub action_deploy {
+    my ($self) = @_;
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_undeploy {
+    my ($self) = @_;
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_start {
+    my ($self) = @_;
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_available {
+    my ($self) = @_;
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_existing {
+    my ($self) = @_;
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_save_config {
+    my ($self) = @_;
+
+    my $target_config = $self->params->{target_config};
+    if ( ( $target_config // '' ) eq '' ) {
+        fatalf('Unspecified target config for save_config');
+    }
+
+    my $data = clone( $self->params );
+
+    delete( @{$data}{qw(action config target_config)} );
+
+    infof( q{Save config to '%s'}, $target_config );
+    json_save( $target_config, $data );
+
+    return undef;
+}
+
+#*****************************************************************************
+sub action_delete_config {
+    my ($self) = @_;
+
+    my $target_config = $self->params->{target_config};
+    if ( ( $target_config // '' ) eq '' ) {
+        fatalf('Unspecified target config for delete_config');
+    }
+
+    infof( q{Delete config '%s'}, $target_config );
+    unlink($target_config);
+
+    return undef;
 }
 
 #*****************************************************************************
