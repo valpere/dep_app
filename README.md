@@ -35,12 +35,15 @@ For example, syntax of command line utility could be:
 ./tool --config config.txt --action deploy --application hello-world.war
 
 #-----------------------------------------------------------------------------
+
 Lives here:
 https://github.com/valpere/dep_app
 
 Requires it:
 https://github.com/valpere/wono
+
 #-----------------------------------------------------------------------------
+
 Tested on Fedora Core 27
 tomcat-8.0.51-1.fc27.noarch
 
