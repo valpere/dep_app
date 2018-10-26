@@ -22,12 +22,14 @@ use lib($Bin);
 
 use Wono::Utils qw(
     :json
+    strip_spaces
 );
 use Wono::Driver::Tomcat8;
 use Wono::Logger qw(
     debugf
     debugd
     infof
+    errorf
     fatalf
     warningf
 );
@@ -112,9 +114,10 @@ sub action_deploy {
     }
     else {
         warningf($resp);
+        return 0;
     }
 
-    return undef;
+    return 1;
 } ## end sub action_deploy
 
 #*****************************************************************************
@@ -137,9 +140,10 @@ sub action_undeploy {
     }
     else {
         warningf($resp);
+        return 0;
     }
 
-    return undef;
+    return 1;
 } ## end sub action_undeploy
 
 #*****************************************************************************
@@ -162,9 +166,10 @@ sub action_start {
     }
     else {
         warningf($resp);
+        return 0;
     }
 
-    return undef;
+    return 1;
 } ## end sub action_start
 
 #*****************************************************************************
@@ -187,25 +192,35 @@ sub action_stop {
     }
     else {
         warningf($resp);
+        return 0;
     }
 
-    return undef;
+    return 1;
 } ## end sub action_stop
 
 #*****************************************************************************
 sub action_available {
     my ($self) = @_;
 
-    my $resp = $self->driver->call( {
-            method => 'HEAD',
-            action => $self->params->{path},
-        }
-    );
+    local $EVAL_ERROR = undef;
+
+    my $resp = eval {
+        $self->driver->call( {
+                method => 'HEAD',
+                action => $self->params->{path},
+            }
+        );
+    };
+
+    if ( my $eval_error = $EVAL_ERROR ) {
+        errorf( strip_spaces($eval_error) );
+        return 0;
+    }
 
     infof( q{Application at '%s' is available}, $self->params->{path} );
 
-    return undef;
-}
+    return 1;
+} ## end sub action_available
 
 #*****************************************************************************
 sub action_existing {
@@ -230,15 +245,15 @@ sub action_existing {
 
     my $our_app = first_value { $_ =~ $regexp } @list;
 
-    if ($our_app) {
-        my ( undef, $running ) = split( ':', $our_app, 3 );
-        infof( q{Application '%s' exists and %s}, $name, $running );
-    }
-    else {
+    if ( !$our_app ) {
         warningf( q{Application '%s' doesn't exist}, $name );
+        return 0;
     }
 
-    return undef;
+    my ( undef, $running ) = split( ':', $our_app, 3 );
+    infof( q{Application '%s' exists and %s}, $name, $running );
+
+    return 1;
 } ## end sub action_existing
 
 #*****************************************************************************
@@ -257,7 +272,7 @@ sub action_save_config {
     infof( q{Save config to '%s'}, $target_config );
     json_save( $target_config, $data );
 
-    return undef;
+    return 1;
 }
 
 #*****************************************************************************
@@ -272,7 +287,7 @@ sub action_delete_config {
     infof( q{Delete config '%s'}, $target_config );
     unlink($target_config);
 
-    return undef;
+    return 1;
 }
 
 #*****************************************************************************

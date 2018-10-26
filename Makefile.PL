@@ -22,6 +22,8 @@ WriteMakefile(
         'Ref::Util'             => 0,
         'Wono::Driver::Tomcat8' => 0,
         'Wono::Utils'           => 0,
+        'Test::Simple'          => 0,
+        'Test::MockModule'      => 0,
     },
     'dist' => {
         COMPRESS => 'gzip -9f',
