@@ -16,8 +16,10 @@ use Wono::DepApp;
 #*****************************************************************************
 const my $_OPTS => [
     'action|ac=s@',
-    'application|ap=s',
     'target_config|tc=s',
+    'application|ap=s',
+    'path|pa=s',
+    'update|upd',
 ];
 
 #*****************************************************************************
@@ -46,6 +48,13 @@ dep_app.pl -- deploy/undeploy WAR-applications
         [-(verbose_verbose|vv)] \
         [-(config|c)=</path/to/configfile>] \
         [-(data_dir|d)=</path/to/data_dir>] \
+        -(action|ac)=action_1 \
+        ...
+        -(action|ac)=action_n \
+        [-(target_config|tc)=<path/to/target/cofigfile>] \
+        [-(application|ap}=<path/to/applicationfile>] \
+        [-(path|pa)=<context/path/on/target/system>] \
+        [-(update|upd)] \
 
     Where:
         -help                  - brief help message
@@ -54,6 +63,33 @@ dep_app.pl -- deploy/undeploy WAR-applications
         -verbose_verbose       - more verbose mode
         -config                - path to config file
         -data_dir              - output directory
+        -action                - one of the list:
+                                * deploy
+                                * undeploy
+                                * start
+                                * stop
+                                * available
+                                * existing
+                                * save_config
+                                * delete_config
+        -target_config         - path to target cofigfile for actions
+                                * save_config
+                                * delete_config
+        -application           - path to applicationfile
+                                * deploy
+                                * undeploy
+                                * start
+                                * stop
+                                * available
+                                * existing
+        -path                  - context path on target system
+                                * deploy
+                                * undeploy
+                                * start
+                                * stop
+                                * available
+                                * existing
+        -update                - for action 'deploy' update or not existing application
 
     NOTE:
         Log file is dep_app.log is located in output directory.

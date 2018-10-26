@@ -10,14 +10,11 @@ extends 'Wono';
 
 use Const::Fast;
 use English qw( -no_match_vars );
-use File::Spec ();
-use Ref::Util qw(
-    is_arrayref
-    is_hashref
+use List::MoreUtils qw(
+    first_value
 );
-use IO::File ();
-use List::MoreUtils qw(uniq);
 use Clone qw(clone);
+use File::Basename qw(fileparse);
 
 # search for libs in module's directory
 use FindBin qw($Bin);
@@ -28,12 +25,11 @@ use Wono::Utils qw(
 );
 use Wono::Driver::Tomcat8;
 use Wono::Logger qw(
-    init_logger
-    logger
+    debugf
     debugd
-    info
     infof
     fatalf
+    warningf
 );
 
 #*****************************************************************************
@@ -41,6 +37,7 @@ const my $_KNOWN_ACTIONS => {
     deploy        => 1,
     undeploy      => 1,
     start         => 1,
+    stop          => 1,
     available     => 1,
     existing      => 1,
     save_config   => 1,
@@ -56,49 +53,17 @@ has 'driver' => (
     init_arg => undef,
 );
 
-has 'json' => (
-    is      => 'ro',
-    isa     => 'Object',
-    builder => 'json_obj',
-);
-
 #*****************************************************************************
 sub initialize {
     my ( $self, $preps, $opts ) = @_;
 
     $self->SUPER::initialize( $preps, $opts );
 
-    my $actions = [ uniq @{ $self->params->{action} || [] } ];
-    if ( @{$actions} < 1 ) {
+    if ( @{ $self->params->{action} || [] } < 1 ) {
         fatalf( 'Please specify one of the actions: %s', join( ', ', sort keys %{$_KNOWN_ACTIONS} ) );
     }
 
-    $self->params->{action} = $actions;
-
     return undef;
-}
-
-#*****************************************************************************
-sub finalize {
-    my ( $self, $msg ) = @_;
-
-    $self->SUPER::finalize($msg);
-
-    return undef;
-}
-
-#*****************************************************************************
-sub process_init {
-    my ($self) = @_;
-
-    return 1;
-}
-
-#*****************************************************************************
-sub process_done {
-    my ($self) = @_;
-
-    return 1;
 }
 
 #*****************************************************************************
@@ -115,9 +80,9 @@ sub process_iteration {
         fatalf( q{Cannot handle action '%s'}, $action );
     }
 
-    infof( 'Iteration begin: %s', $action );
+    debugf( 'Iteration begin: %s', $action );
     $self->$handler();
-    infof( 'Iteration end: %s', $action );
+    debugf( 'Iteration end: %s', $action );
 
     return scalar( @{ $self->params->{action} } );
 }
@@ -126,26 +91,118 @@ sub process_iteration {
 sub action_deploy {
     my ($self) = @_;
 
+    my $params = {
+        path => $self->params->{path},
+    };
+
+    if ( $self->params->{path} ) {
+        $params->{update} = 'true';
+    }
+
+    my $resp = $self->driver->call( {
+            method      => 'PUT',
+            action      => '/manager/text/deploy',
+            params      => $params,
+            attachments => $self->params->{application},
+        }
+    );
+
+    if ( $resp =~ m/^OK\s+/ ) {
+        infof($resp);
+    }
+    else {
+        warningf($resp);
+    }
+
     return undef;
-}
+} ## end sub action_deploy
 
 #*****************************************************************************
 sub action_undeploy {
     my ($self) = @_;
 
+    my $params = {
+        path => $self->params->{path},
+    };
+
+    my $resp = $self->driver->call( {
+            method => 'GET',
+            action => '/manager/text/undeploy',
+            params => $params,
+        }
+    );
+
+    if ( $resp =~ m/^OK\s+/ ) {
+        infof($resp);
+    }
+    else {
+        warningf($resp);
+    }
+
     return undef;
-}
+} ## end sub action_undeploy
 
 #*****************************************************************************
 sub action_start {
     my ($self) = @_;
 
+    my $params = {
+        path => $self->params->{path},
+    };
+
+    my $resp = $self->driver->call( {
+            method => 'GET',
+            action => '/manager/text/start',
+            params => $params,
+        }
+    );
+
+    if ( $resp =~ m/^OK\s+/ ) {
+        infof($resp);
+    }
+    else {
+        warningf($resp);
+    }
+
     return undef;
-}
+} ## end sub action_start
+
+#*****************************************************************************
+sub action_stop {
+    my ($self) = @_;
+
+    my $params = {
+        path => $self->params->{path},
+    };
+
+    my $resp = $self->driver->call( {
+            method => 'GET',
+            action => '/manager/text/stop',
+            params => $params,
+        }
+    );
+
+    if ( $resp =~ m/^OK\s+/ ) {
+        infof($resp);
+    }
+    else {
+        warningf($resp);
+    }
+
+    return undef;
+} ## end sub action_stop
 
 #*****************************************************************************
 sub action_available {
     my ($self) = @_;
+
+    my $resp = $self->driver->call( {
+            method => 'HEAD',
+            action => $self->params->{path},
+        }
+    );
+
+    infof( q{Application at '%s' is available}, $self->params->{path} );
 
     return undef;
 }
@@ -154,8 +211,35 @@ sub action_available {
 sub action_existing {
     my ($self) = @_;
 
+    my $resp = $self->driver->call( {
+            method => 'GET',
+            action => '/manager/text/list',
+        }
+    );
+
+    my @list = split( m/\r?\n/, $resp );
+
+    infof( shift(@list) );
+
+    my $path = $self->params->{path};
+    my ($name) = fileparse( $self->params->{application} );
+
+    $name =~ s/\.war$//i;
+
+    my $regexp = qr/^$path:.+?:$name$/;
+
+    my $our_app = first_value { $_ =~ $regexp } @list;
+
+    if ($our_app) {
+        my ( undef, $running ) = split( ':', $our_app, 3 );
+        infof( q{Application '%s' exists and %s}, $name, $running );
+    }
+    else {
+        warningf( q{Application '%s' doesn't exist}, $name );
+    }
+
     return undef;
-}
+} ## end sub action_existing
 
 #*****************************************************************************
 sub action_save_config {
